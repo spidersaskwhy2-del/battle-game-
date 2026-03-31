@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tactical Grid Battle</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            overflow: hidden;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            color: #f1c40f;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #game-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        canvas {
+            border: 5px solid #f39c12;
+            background-color: #34495e;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        #game-info {
+            background-color: #34495e;
+            padding: 20px;
+            border-radius: 8px;
+            width: 300px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .info-section {
+            padding: 10px;
+            border-bottom: 1px solid #4a627a;
+        }
+        .info-section:last-child {
+            border-bottom: none;
+        }
+
+        #instructions {
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: #bdc3c7;
+            max-width: 600px;
+            margin-top: 30px;
+            text-align: center;
+            background-color: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        button {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #27ae60;
+        }
+        button:disabled {
+            background-color: #7f8c8d;
+            cursor: not-allowed;
+        }
+
+        .team-red { color: #e74c3c; font-weight: bold; }
+        .team-blue { color: #3498db; font-weight: bold; }
+        .current-turn-red { background-color: #e74c3c; color: white; padding: 5px; border-radius: 3px; }
+        .current-turn-blue { background-color: #3498db; color: white; padding: 5px; border-radius: 3px; }
+
+        .unit-card {
+            border: 1px solid #555;
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            background-color: #4a627a;
+            font-size: 0.9em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .unit-card.active {
+            border-color: #f1c40f;
+            background-color: #5d758f;
+            box-shadow: 0 0 8px rgba(241, 196, 15, 0.5);
+        }
+        .unit-card .health-bar {
+            width: 50px;
+            height: 8px;
+            background-color: #ccc;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-left: 10px;
+        }
+        .unit-card .health-fill {
+            height: 100%;
+            background-color: #27ae60;
+            width: 100%; /* Will be updated by JS */
+            transition: width 0.3s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tactical Grid Battle</h1>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+        <div id="game-info">
+            <div class="info-section">
+                <h2>Game Log</h2>
+                <p id="game-log">Welcome to the battle!</p>
+            </div>
+            <div class="info-section">
+                <h2>Current Turn</h2>
+                <p id="current-turn"></p>
+                <button id="end-turn-button" disabled>End Turn</button>
+            </div>
+            <div class="info-section">
+                <h2>Units</h2>
+                <div id="unit-list">
+                    <!-- Unit cards will be injected here by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="instructions">
+        <h2>How to Play:</h2>
+        <p>This is a turn-based tactical strategy game. Your goal is to eliminate all enemy units!</p>
+        <p>
+            1. Click on one of your units (Red Team starts).
+            2. Blue squares show where you can move. Click a blue square to move the unit.
+            3. Red squares show enemy units you can attack. Click a red square to attack.
+            4. After moving or attacking, the unit's turn ends. Each unit can act once per turn.
+            5. Once all your units have acted, click "End Turn" to switch to the other team.
+        </p>
+        <p>Units have <strong>Health</strong> (HP), <strong>Attack</strong> (ATK), and <strong>Movement Range</strong> (MOV).</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameLog = document.getElementById('game-log');
+        const currentTurnDisplay = document.getElementById('current-turn');
+        const endTurnButton = document.getElementById('end-turn-button');
+        const unitListContainer = document.getElementById('unit-list');
+
+        const GRID_SIZE = 10;
+        const CELL_SIZE = canvas.width / GRID_SIZE;
+
+        let selectedUnit = null;
+        let possibleMoves = [];
+        let possibleAttacks = [];
+        let currentTeam = 'red';
+        let units = [];
+
+        class Unit {
+            constructor(id, team, x, y, hp, atk, mov) {
+                this.id = id;
+                this.team = team;
+                this.x = x;
+                this.y = y;
+                this.hp = hp;
+                this.maxHp = hp;
+                
